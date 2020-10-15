@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import ast
+import datetime
+import multiprocessing
 import time
 from configparser import ConfigParser
 
+import pymysql
 import requests
 from HTMLTable import HTMLTable
 
@@ -25,7 +28,7 @@ def output_html(rowData):
     # 标题
     table = HTMLTable(caption='吉祥航空畅心飞余票概览(%s更新)' % nowTime)
     table.append_header_rows((
-        ('日期', '航班', '始发城市', '目的城市', '航线', '时间', '耗时', '畅飞卡座位'),
+        ('日期', '始发城市', '目的城市', '航班', '航线', '时间', '耗时', '畅飞卡座位'),
     ))
 
     # 表格内容
@@ -65,17 +68,19 @@ def output_html(rowData):
 
 # 得到航班余票信息
 def get_flight_ticket(data):
+    carrierList = []
+    requestTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  # 请求航班数据接口时间
     headers = config['header']['headers']
     url = config['url']['AvFare']
-    headers = ast.literal_eval(headers)  # 字符串转字典，使用literal_eval更安全，避免了 json 包的双引号问题
+    # 字符串转字典，使用literal_eval更安全，避免了 json 包的双引号问题
+    headers = ast.literal_eval(headers)
     response = requests.post(url=url, headers=headers,
                              data=data).json()
-
+    # time.sleep(random.randint(1, 4))
     errorInfo = response.get("errorInfo")
     flightInfoList = response.get("flightInfoList")
-
-    if flightInfoList == None or flightInfoList == []:
-        pass
+    if flightInfoList is None or flightInfoList == []:
+        print(requestTime, '获取航班数据异常', '报错:%s' % errorInfo)
     elif errorInfo == '成功':
         for flightInfo in flightInfoList:
             for cabinFare in flightInfo['cabinFareList']:
@@ -93,39 +98,85 @@ def get_flight_ticket(data):
                     duration = flightInfo.get('duration')  # 航班耗时
                     duration = time.strftime("%H时%M分", time.gmtime(duration / 1000))  # 耗时转换为小时分钟
                     cabinNumber = cabinFare['cabinNumber']  # 余票
+                    airRoute = depCityName + depAirportName + depTerm + '->' + arrCityName + arrAirportName + arrTerm  # 航线
+                    flyTime = depDateTime + '~' + arrDateTime  # 时间
                     if cabinNumber == 'A':
                         cabinNumber = '可兑换'
                     else:
                         cabinNumber = cabinNumber
-                    content = (flightDate, carrierNoName, depCityName, arrCityName,
-                               depCityName + depAirportName + depTerm + '->' + arrCityName + arrAirportName + arrTerm,
-                               depDateTime + '~' + arrDateTime, duration, cabinNumber)
-                    return content
+                    content = "'{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'".format(createTime, flightDate,
+                                                                                            depCityName,
+                                                                                            arrCityName, carrierNoName,
+                                                                                            airRoute, flyTime,
+                                                                                            duration, cabinNumber)
+                    if content is not None:
+                        carrierList.append(str(content))
+        # return carrierList
+        # print(carrierList)
+        if carrierList != None:
+            for row in range(len(carrierList)):
+                save_to_db(str(carrierList[row]))
+
+
+def save_to_db(rowData):
+    wirteTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  # 写入数据库时间
+    db = pymysql.connect("localhost", "root", "", "juneyaoair")  # 打开数据库连接
+    cursor = db.cursor()  # 使用 cursor() 方法创建一个游标对象 cursor
+    sql = """INSERT INTO unlimited_fly_tickets (create_time, flight_date, dep_city_name, arr_city_name, carrier_no_name, air_route, fly_time, duration, cabinbumber) VALUES ({})""".format(
+        rowData)  # SQL 插入语句
+    try:
+        cursor.execute(sql)  # 执行sql语句
+        db.commit()  # 提交到数据库执行
+        print(wirteTime, "成功写入表中", rowData)
+    except BaseException:
+        db.rollback()  # 如果发生错误则回滚
+        db.show_warnings()
+        print(wirteTime, "写入表失败", rowData)
+    db.close()  # 关闭数据库连接
 
 
 if __name__ == '__main__':
     allFlights = get_place()
     blackBox = config['blackBox']['blackBox']
-    dataList = []
-    contentList = []
-    departureDate = "2020-10-20"
-    for i in range(len(allFlights)):
-        departureCity = allFlights[i].get('departureCity')
-        if departureCity == '长沙':
-            sendCode = allFlights[i].get('长沙')
-            allowFlights = allFlights[i].get('allowFlights')
-            for arrCode in allowFlights.keys():
-                data = '{"directType": "D", "flightType": "OW","tripType": "D","arrCode": "%s","sendCode": "%s",' \
-                       '"departureDate": "%s","blackBox": "%s"}' % (arrCode, sendCode, departureDate, blackBox)
-                # dataList.append(data)
-                content = get_flight_ticket(data)
-                if content != None:
-                    contentList.append(str(content))
-            rowData = ','.join(contentList)
-            html = output_html(rowData)
-            print(html)
-    # pool = multiprocessing.Pool(processes=10)  # 100 个进程
-    # # 多进程
-    # pool.map(get_flight_ticket, dataList)  # 列表，迭代器
-    # pool.close()
-    # pool.join()
+    dataList = [] # 目的地列表
+    contentList = [] # 每天的航班信息列表，只用于输出 html
+    createTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+    today = datetime.date.today()
+    for day in range(5, 35):
+        departureDate = today + datetime.timedelta(days=day)
+        for i in range(len(allFlights)):
+            departureCity = allFlights[i].get('departureCity')
+            if departureCity == '上海':
+                sendCode = allFlights[i].get('上海')
+                allowFlights = allFlights[i].get('allowFlights')
+                for arrCode in allowFlights.keys():
+                    data = '{"directType": "D", "flightType": "OW","tripType": "D","arrCode": "%s","sendCode": "%s",' \
+                           '"departureDate": "%s","blackBox": "%s"}' % (arrCode, sendCode, departureDate, blackBox)
+                    dataList.append(data)
+
+        #         content = get_flight_ticket(createTime, data)
+        #         if content != None :
+        #             for row in range(len(content)):
+        #                 print(content[row])
+        # #             contentList = content + contentList
+        #     print(contentList)
+        # for j in range(len(contentList)):
+        #     save_to_db(contentList(j))
+    # save_to_db(contentList(j))
+    # rowData = ','.join(contentList)
+    # rowData = '({})'.format(rowData)
+    # html = output_html(rowData)
+    # print(html)
+    # print(rowData)
+
+    pool = multiprocessing.Pool(processes=50)  # 100 个进程
+
+    # 多进程
+    pool.map(get_flight_ticket, dataList)  # 列表，迭代器
+    pool.close()
+    pool.join()
+    # carrierList = ['2020-10-15 00:46:13, 2020-10-23, 长沙, 丽江, 吉祥HO1071, 长沙黄花T2->丽江三义, 17:50~20:10, 02时20分, 可兑换', '2020-10-15 00:46:13, 2020-10-23, 长沙, 丽江, 吉祥HO1071, 长沙黄花T2->丽江三义, 17:50~20:10, 02时20分, 可兑换']
+    # for row in range(len(carrierList)):
+    #     print(str(carrierList[row]))
+    #     # save_to_db(str(carrierList[row]))
