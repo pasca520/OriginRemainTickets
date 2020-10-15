@@ -119,8 +119,10 @@ def get_flight_ticket(data):
 
 
 def save_to_db(rowData):
+    passWord = config['database']['passWord']
+    databaseName = config['database']['databaseName']
     wirteTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  # 写入数据库时间
-    db = pymysql.connect("localhost", "root", "", "juneyaoair")  # 打开数据库连接
+    db = pymysql.connect("localhost", "root", passWord, databaseName)  # 打开数据库连接
     cursor = db.cursor()  # 使用 cursor() 方法创建一个游标对象 cursor
     sql = """INSERT INTO unlimited_fly_tickets (create_time, flight_date, dep_city_name, arr_city_name, carrier_no_name, air_route, fly_time, duration, cabinbumber) VALUES ({})""".format(
         rowData)  # SQL 插入语句
@@ -138,8 +140,8 @@ def save_to_db(rowData):
 if __name__ == '__main__':
     allFlights = get_place()
     blackBox = config['blackBox']['blackBox']
-    dataList = [] # 目的地列表
-    contentList = [] # 每天的航班信息列表，只用于输出 html
+    dataList = []  # 目的地列表
+    contentList = []  # 每天的航班信息列表，只用于输出 html
     createTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     today = datetime.date.today()
@@ -170,7 +172,7 @@ if __name__ == '__main__':
     # print(html)
     # print(rowData)
 
-    pool = multiprocessing.Pool(processes=50)  # 100 个进程
+    pool = multiprocessing.Pool(processes=20)  # 100 个进程
 
     # 多进程
     pool.map(get_flight_ticket, dataList)  # 列表，迭代器
