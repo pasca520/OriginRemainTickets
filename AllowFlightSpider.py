@@ -2,8 +2,8 @@
 
 import ast
 import datetime
-import multiprocessing
 import time
+import random
 from configparser import ConfigParser
 
 import pymysql
@@ -76,7 +76,7 @@ def get_flight_ticket(data):
     headers = ast.literal_eval(headers)
     response = requests.post(url=url, headers=headers,
                              data=data).json()
-    # time.sleep(random.randint(1, 4))
+    time.sleep(random.randint(1, 4))
     errorInfo = response.get("errorInfo")
     flightInfoList = response.get("flightInfoList")
     if flightInfoList is None or flightInfoList == []:
@@ -143,9 +143,11 @@ if __name__ == '__main__':
     dataList = []  # 目的地列表
     contentList = []  # 每天的航班信息列表，只用于输出 html
     createTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    processStartTime = datetime.datetime.now()
 
     today = datetime.date.today()
     for day in range(5, 35):
+        time.sleep(random.randint(1, 10))
         departureDate = today + datetime.timedelta(days=day)
         for i in range(len(allFlights)):
             departureCity = allFlights[i].get('departureCity')
@@ -155,30 +157,28 @@ if __name__ == '__main__':
                 for arrCode in allowFlights.keys():
                     data = '{"directType": "D", "flightType": "OW","tripType": "D","arrCode": "%s","sendCode": "%s",' \
                            '"departureDate": "%s","blackBox": "%s"}' % (arrCode, sendCode, departureDate, blackBox)
-                    dataList.append(data)
-
-        #         content = get_flight_ticket(createTime, data)
-        #         if content != None :
-        #             for row in range(len(content)):
-        #                 print(content[row])
-        # #             contentList = content + contentList
-        #     print(contentList)
+                    # dataList.append(data)
+                    get_flight_ticket(data)
+                # if content != None :
+                #     for row in range(len(content)):
+                #         save_to_db(contentList[row])
         # for j in range(len(contentList)):
         #     save_to_db(contentList(j))
-    # save_to_db(contentList(j))
+
+    # 输出到 html 模块，不用可注释
     # rowData = ','.join(contentList)
     # rowData = '({})'.format(rowData)
     # html = output_html(rowData)
     # print(html)
     # print(rowData)
 
-    pool = multiprocessing.Pool(processes=20)  # 100 个进程
+    # pool = multiprocessing.Pool(processes=20)  # 100 个进程
+    #
+    # # 多进程
+    # pool.map(get_flight_ticket, dataList)  # 列表，迭代器
+    # pool.close()
+    # pool.join()
 
-    # 多进程
-    pool.map(get_flight_ticket, dataList)  # 列表，迭代器
-    pool.close()
-    pool.join()
-    # carrierList = ['2020-10-15 00:46:13, 2020-10-23, 长沙, 丽江, 吉祥HO1071, 长沙黄花T2->丽江三义, 17:50~20:10, 02时20分, 可兑换', '2020-10-15 00:46:13, 2020-10-23, 长沙, 丽江, 吉祥HO1071, 长沙黄花T2->丽江三义, 17:50~20:10, 02时20分, 可兑换']
-    # for row in range(len(carrierList)):
-    #     print(str(carrierList[row]))
-    #     # save_to_db(str(carrierList[row]))
+    processEndTime = datetime.datetime.now()
+    processConsumingTime = (processEndTime - processStartTime).seconds
+    print(createTime, '该次任务总共耗时：{} 分钟'.format(processConsumingTime/60))
