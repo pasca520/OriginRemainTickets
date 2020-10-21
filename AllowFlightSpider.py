@@ -5,7 +5,7 @@ import datetime
 import time
 import random
 from configparser import ConfigParser
-
+import multiprocessing
 import pymysql
 import requests
 from HTMLTable import HTMLTable
@@ -76,7 +76,7 @@ def get_flight_ticket(data):
     headers = ast.literal_eval(headers)
     response = requests.post(url=url, headers=headers,
                              data=data).json()
-    time.sleep(random.randint(1, 4))
+    # time.sleep(random.randint(1, 4))
     errorInfo = response.get("errorInfo")
     flightInfoList = response.get("flightInfoList")
     if flightInfoList is None or flightInfoList == []:
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
     today = datetime.date.today()
     for day in range(5, 35):
-        time.sleep(random.randint(1, 10))
+        # time.sleep(random.randint(1, 10))
         departureDate = today + datetime.timedelta(days=day)
         for i in range(len(allFlights)):
             departureCity = allFlights[i].get('departureCity')
@@ -157,13 +157,9 @@ if __name__ == '__main__':
                 for arrCode in allowFlights.keys():
                     data = '{"directType": "D", "flightType": "OW","tripType": "D","arrCode": "%s","sendCode": "%s",' \
                            '"departureDate": "%s","blackBox": "%s"}' % (arrCode, sendCode, departureDate, blackBox)
-                    # dataList.append(data)
-                    get_flight_ticket(data)
-                # if content != None :
-                #     for row in range(len(content)):
-                #         save_to_db(contentList[row])
-        # for j in range(len(contentList)):
-        #     save_to_db(contentList(j))
+                    dataList.append(data)  # 多进程用这个，注释取消
+                    # get_flight_ticket(data)  # 单进程用这个
+
 
     # 输出到 html 模块，不用可注释
     # rowData = ','.join(contentList)
@@ -172,12 +168,12 @@ if __name__ == '__main__':
     # print(html)
     # print(rowData)
 
-    # pool = multiprocessing.Pool(processes=20)  # 100 个进程
-    #
-    # # 多进程
-    # pool.map(get_flight_ticket, dataList)  # 列表，迭代器
-    # pool.close()
-    # pool.join()
+    pool = multiprocessing.Pool(processes=4)  # 进程
+
+    # 多进程
+    pool.map(get_flight_ticket, dataList)  # 列表，迭代器
+    pool.close()
+    pool.join()
 
     processEndTime = datetime.datetime.now()
     processConsumingTime = (processEndTime - processStartTime).seconds
